@@ -1,0 +1,207 @@
+<?php
+
+/*
+ * Title: File Import Script
+ * Author: YetiShare.com
+ * Period: Run as required
+ * 
+ * Description:
+ * Script to batch import existing files into an account within your YetiShare installation.
+ * 
+ * Requirements:
+ * - PHP 5.2+.
+ * - MySQL PDO module enabled in PHP.
+ * - Remote access to your database if you're running this on a file server.
+ * 
+ * Configure this script by replacing any settings below within [[[SQUARE_BRACKETS]]].
+ *
+ * Once configured, upload this file to the root of your install (same place as ___RELEASE_HISTORY.txt)
+ * and call it on the command line via PHP.
+ *
+ * How To Call:
+ * On the command line via PHP, like this:
+ * php import.php
+ */
+
+// account name to import files into
+define('FILE_IMPORT_ACCOUNT_NAME', '[[[FILE_IMPORT_ACCOUNT_NAME]]]');
+
+// local path to files, this must be on the same server as this script
+define('FILE_IMPORT_PATH', '[[[FILE_IMPORT_PATH]]]');
+
+// the folder within the account to start with, set to null (without quotes) for root, the folder must exist in the root aswell
+define('FILE_IMPORT_ACCOUNT_START_FOLDER', '[[[FILE_IMPORT_ACCOUNT_START_FOLDER]]]');
+
+/*
+ * **************************************************
+ * DONT CHANGE ANYTHING BELOW HERE
+ * **************************************************
+ */
+
+// setup environment
+define('CLI_MODE', true);
+define('SHOW_OUTPUT', true);
+require_once('core/includes/master.inc.php');
+
+// padding
+output();
+
+// check local folder path exists
+if (!file_exists(FILE_IMPORT_PATH))
+{
+    output('ERROR: Local file path not found: ' . FILE_IMPORT_PATH, true);
+}
+
+// make sure account exists
+if (!$user = UserPeer::loadUserByUsername(FILE_IMPORT_ACCOUNT_NAME))
+{
+    output('ERROR: User account not found: ' . FILE_IMPORT_ACCOUNT_NAME, true);
+}
+
+// set user id for later
+define('FILE_IMPORT_ACCOUNT_USER_ID', $user->id);
+
+// make sure the folder id exists on the account
+$folderId = 0;
+if (FILE_IMPORT_ACCOUNT_START_FOLDER != null)
+{
+    $folder = $db->getRow('SELECT * FROM file_folder WHERE userId = ' . (int) FILE_IMPORT_ACCOUNT_USER_ID . ' AND folderName = ' . $db->quote(FILE_IMPORT_ACCOUNT_START_FOLDER) . ' AND parentId IS NULL LIMIT 1');
+    if (!$folder)
+    {
+        output('ERROR: Could not load folder: ' . FILE_IMPORT_ACCOUNT_START_FOLDER, true);
+    }
+    else
+    {
+        if ($folder['userId'] != $user->id)
+        {
+            output('ERROR: Folder does not belong to that user: ' . FILE_IMPORT_ACCOUNT_START_FOLDER, true);
+        }
+    }
+
+    $folderId = $folder['id'];
+}
+
+// prepare folder id
+if ((int) $folderId == 0)
+{
+    $folderId = null;
+}
+
+// prepare path
+$localPath = FILE_IMPORT_PATH;
+if (substr($localPath, strlen($localPath) - 1, 1) != '/')
+{
+    $localPath .= '/';
+}
+
+// scan for files
+$items = coreFunctions::getDirectoryListing($localPath);
+if (COUNT($items) == 0)
+{
+    output('ERROR: No files or folders found in folder. Total: ' . COUNT($items), true);
+}
+
+// import files
+importFiles($localPath, $folderId);
+
+// finish
+output('Import process completed.');
+
+// local functions
+function importFiles($localPath, $folderId)
+{
+    // setup database
+    $db = Database::getDatabase();
+
+    // get items
+    $items = coreFunctions::getDirectoryListing($localPath);
+    if (COUNT($items))
+    {
+        foreach ($items AS $item)
+        {
+            if (is_dir($item))
+            {
+                // directory, first make sure we have the folder
+                $folderName    = basename($item);
+                $childFolderId = (int) $db->getValue('SELECT id FROM file_folder WHERE userId = ' . (int) FILE_IMPORT_ACCOUNT_USER_ID . ' AND folderName = ' . $db->quote($folderName) . ' AND parentId ' . ($folderId > 0 ? ' IS NULL' : ('=' . (int) $folderId)) . ' LIMIT 1');
+                if (!$childFolderId)
+                {
+                    $db->query('INSERT INTO file_folder (folderName, isPublic, userId, parentId) VALUES (:folderName, :isPublic, :userId, :parentId)', array('folderName' => $folderName, 'isPublic'   => 1, 'userId'     => FILE_IMPORT_ACCOUNT_USER_ID, 'parentId'   => $folderId));
+                    $childFolderId = $db->insertId();
+                }
+
+                // loop again for files within
+                importFiles($item, $childFolderId);
+            }
+            else
+            {
+                // file
+                $rs = importFile($item, $folderId);
+                if ($rs)
+                {
+                    output('Imported ' . $item);
+                }
+                else
+                {
+                    output('Error: File above failed import (' . $item . ')');
+                }
+            }
+        }
+    }
+}
+
+function importFile($filePath, $folderId)
+{
+    // setup uploader
+    $uploadHandler = new uploader(array(
+        'folder_id' => $folderId,
+        'user_id'   => FILE_IMPORT_ACCOUNT_USER_ID,
+    ));
+
+    // get original filename
+    $pathParts = pathinfo($filePath);
+    $filename  = $pathParts['filename'];
+    if (strlen($pathParts['extension']))
+    {
+        $filename .= '.' . $pathParts['extension'];
+    }
+
+    // get mime type
+    $mimeType = file::estimateMimeTypeFromExtension($filename, 'application/octet-stream');
+    if (($mimeType == 'application/octet-stream') && (class_exists('finfo', false)))
+    {
+        $finfo    = new finfo;
+        $mimeType = $finfo->file($filePath, FILEINFO_MIME);
+    }
+
+    $fileUpload        = new stdClass();
+    $fileUpload->name  = stripslashes($filename);
+    $fileUpload->size  = filesize($filePath);
+    $fileUpload->type  = $mimeType;
+    $fileUpload->error = null;
+    $fileUpload        = $uploadHandler->moveIntoStorage($fileUpload, $filePath, true); // keeps the original
+    if (strlen($fileUpload->error))
+    {
+        output('Error: ' . $fileUpload->error);
+        return false;
+    }
+
+    return true;
+}
+
+function output($msg = '', $exit = false)
+{
+    if (SHOW_OUTPUT == true)
+    {
+        echo $msg . "\n";
+    }
+
+    if ($exit == true)
+    {
+        if (SHOW_OUTPUT == true)
+        {
+            echo "\n";
+        }
+        die();
+    }
+}

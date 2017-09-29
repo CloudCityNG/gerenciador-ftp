@@ -1,0 +1,18 @@
+<?php
+// load image
+$image = null;
+if (isset($_REQUEST['_page_url']))
+{
+    // only keep the initial part if there's a forward slash
+    $shortUrl = current(explode("/", str_replace("~i", "", $_REQUEST['_page_url'])));
+    $image = file::loadByShortUrl($shortUrl);
+}
+
+// redirect to image
+if ($image)
+{
+    coreFunctions::redirect($image->getFullShortUrl());
+}
+
+// if no file found, redirect to home page
+coreFunctions::redirect(WEB_ROOT . "/index." . SITE_CONFIG_PAGE_EXTENSION);

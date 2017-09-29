@@ -1,0 +1,74 @@
+<?php
+// local template functions
+require_once(SITE_TEMPLATES_PATH . '/partial/_template_functions.inc.php');
+
+// make sure user registration is enabled
+if (SITE_CONFIG_ENABLE_USER_REGISTRATION == 'no')
+{
+    coreFunctions::redirect(WEB_ROOT);
+}
+
+// load theme functions
+$themeObj = themeHelper::getLoadedInstance();
+
+// setup success message
+notification::setSuccess(t("account_successfully_registered", "Account created"));
+
+// page settings
+define("PAGE_NAME", t("register_complete_page_name", "Registro completo"));
+define("PAGE_DESCRIPTION", t("register_complete_meta_description", "O seu cadastro foi concluído."));
+define("PAGE_KEYWORDS", t("register_complete_meta_keywords", "registration, completed, file, hosting, site"));
+define("HTML_ELEMENT_CLASS", "login-page-wrapper");
+
+// top navigation
+require_once(SITE_TEMPLATES_PATH . '/partial/_navigation_header.inc.php');
+
+// header top
+require_once(SITE_TEMPLATES_PATH . '/partial/_header_file_manager_top.inc.php');
+?>
+<body class="page-body login-page login-form-fall register-page">
+    <div class="login-container">
+        <div class="login-header login-caret">
+            <div class="login-content">
+                <a href="<?php echo coreFunctions::getCoreSitePath(); ?>/index.<?php echo SITE_CONFIG_PAGE_EXTENSION; ?>" class="logo">
+                    <img src="<?php echo $themeObj->getMainLogoUrl(); ?>" alt="<?php echo SITE_CONFIG_SITE_NAME; ?>" alt="<?php echo SITE_CONFIG_SITE_NAME; ?>"/>
+                </a>
+            </div>
+        </div>
+        <div class="login-progressbar">
+            <div></div>
+        </div>
+        <div class="login-form">
+            <div class="login-content">
+				<div class="login-main-box">
+					<?php
+					echo str_replace("pageSuccess", "alert alert-success", notification::outputSuccess());
+					?>
+					<p class="description"><?php
+					echo t("register_complete_main_text", "Enviamos um e-mail para o seu endereço de e-mail com sua senha de acesso." .
+							"Verifique seus filtros de spam para garantir que os e-mails desse site passem. ");
+					?></p>
+					<p class="description"><?php echo t("register_complete_email_from", "Os e-mails deste site são enviados de "); ?>
+					<a href="mailto:<?php echo SITE_CONFIG_DEFAULT_EMAIL_ADDRESS_FROM; ?>"><?php echo SITE_CONFIG_DEFAULT_EMAIL_ADDRESS_FROM; ?></a></p>
+
+					<div class="login-bottom-links">
+						<a href="<?php echo coreFunctions::getCoreSitePath(); ?>/login.<?php echo SITE_CONFIG_PAGE_EXTENSION; ?>" class="link"><i class="entypo-lock"></i> <?php echo UCWords(t("back_to_login_form", "back to login form")); ?></a>
+					</div>
+				</div>
+			</div>
+			<div class="footer-login-links">
+				<?php echo t("copyright", "copyright"); ?> &copy; <?php echo date("Y"); ?> - <a href="<?php echo coreFunctions::getCoreSitePath(); ?>"><?php echo SITE_CONFIG_SITE_NAME; ?></a>&nbsp;&nbsp;|&nbsp;&nbsp;Desenvolvido por <a href="https://linkedin.com/in/jonathan-estefani">Jonathan de Estefani</a>
+			</div>
+        </div>
+    </div>
+    <!-- Bottom Scripts -->
+    <script src="<?php echo SITE_JS_PATH; ?>/gsap/main-gsap.js"></script>
+    <script src="<?php echo SITE_JS_PATH; ?>/bootstrap.js"></script>
+    <script src="<?php echo SITE_JS_PATH; ?>/joinable.js"></script>
+    <script src="<?php echo SITE_JS_PATH; ?>/resizeable.js"></script>
+    <script src="<?php echo SITE_JS_PATH; ?>/cloudable-api.js"></script>
+    <script src="<?php echo SITE_JS_PATH; ?>/jquery.validate.min.js"></script>
+    <script src="<?php echo SITE_JS_PATH; ?>/cloudable-login.js"></script>
+    <script src="<?php echo SITE_JS_PATH; ?>/custom.js"></script>
+</body>
+</html>

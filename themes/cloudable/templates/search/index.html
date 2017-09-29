@@ -1,0 +1,46 @@
+<?php
+
+// load user
+$url = _INT_PAGE_URL;
+$urlParts = explode('/', $url);
+array_shift($urlParts);
+$subCategory = trim(current($urlParts));
+$searchTerm = trim($_REQUEST['t']);
+if(strlen($searchTerm) == 0)
+{
+	coreFunctions::redirect(coreFunctions::getCoreSitePath() . "/browse/");
+}
+$pageTitle = t("search_page_title", "Searching [[[TERM]]]", array('TERM' => str_replace(array('"', '\''), '', $searchTerm)));
+$filterImagesAll = isset($_REQUEST['filterImagesAll'])?($_REQUEST['filterImagesAll']=='true'?'true':'false'):'true';
+$filterUploadedDateRange = isset($_REQUEST['filterUploadedDateRange'])?$_REQUEST['filterUploadedDateRange']:'';
+
+// setup page
+define("PAGE_NAME", $pageTitle);
+define("PAGE_DESCRIPTION", $pageTitle);
+define("PAGE_KEYWORDS", t("browse_meta_keywords", "browser, files, file, your, interface, upload, download, site"));
+define("SELECTED_NAVIGATION_LINK", "browse");
+
+// include header
+require_once(SITE_TEMPLATES_PATH . '/partial/_header.inc.php');
+
+?>
+
+<script>
+$( document ).ready(function() {
+	loadBrowsePageRecentImages("<?php echo str_replace(array('"', '\'', '\\'), '', $searchTerm); ?>", 1, 0, '', {'filterImagesAll': <?php echo $filterImagesAll; ?>, 'filterUploadedDateRange': "<?php echo $filterUploadedDateRange; ?>"});
+	
+	$('a[data-toggle="tab"]').on('shown.bs.tab', function (e) {
+		// sometimes hidden image thumbnails don't get rendered correct, so fix
+		fixImageBrowseHeights('#browse-images');
+	});
+});
+</script>
+
+<div id="browse-images" class="layer">
+	<div class="ajax-loading-image"><!-- --></div>
+</div>
+
+<?php
+// include footer
+require_once(SITE_TEMPLATES_PATH . '/partial/_footer.inc.php');
+?>

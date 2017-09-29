@@ -1,0 +1,59 @@
+.plugin_uninstall_imageviewer, .plugin_uninstall_comments, .plugin_uninstall_sociallogin
+{
+	display: none;
+}
+
+.plugin_delete_imageviewer, .plugin_delete_comments, .plugin_delete_sociallogin
+{
+	display: none;
+}
+
+.plugin_option_divider
+{
+	color: transparent;
+}
+
+.active_downloads, .nav_active_downloads, .nav_plugins, .nav_manage_download_pages, .nav_account_packages, .nav_received_payments, .paid-account-option
+{
+	display: none;
+}
+
+.plugin_imageviewer_account_types, .plugin_imageviewer_preview_image_size
+{
+	display: none;
+}
+
+.user_package_form .download_speed, .user_package_form .wait_between_downloads, .user_package_form .concurrent_downloads, .user_package_form .downloads_per_day
+{
+	display: none;
+}
+
+header.container
+{
+	background-color: rgb(41, 19, 37);
+}
+
+nav.container
+{
+	background-color: rgb(50, 34, 54) !important;
+}
+
+nav.container .sf-menu li
+{
+	background-color: rgb(50, 34, 54);
+}
+
+#titlediv
+{
+	background-color: rgb(56, 47, 56);
+}
+
+.serverAccessWrapper
+{
+	display: none !important;
+}
+
+.social_login_linkedin, .social_login_foursquare, .social_login_instagram, .social_login_aol
+{
+	display: none !important;
+}

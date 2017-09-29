@@ -1,0 +1,294 @@
+<?php
+// local template functions
+require_once(SITE_TEMPLATES_PATH . '/partial/_template_functions.inc.php');
+
+// make sure user registration is enabled
+if (SITE_CONFIG_ENABLE_USER_REGISTRATION == 'no')
+{
+    coreFunctions::redirect(WEB_ROOT);
+}
+
+// check if user already logged in
+if ($Auth->loggedIn())
+{
+    coreFunctions::redirect(WEB_ROOT . '/index.' . SITE_CONFIG_PAGE_EXTENSION);
+}
+
+// load theme functions
+$themeObj = themeHelper::getLoadedInstance();
+
+// page settings
+define("PAGE_NAME", t("register_page_name", "Register"));
+define("PAGE_DESCRIPTION", t("register_meta_description", "Register for an account"));
+define("PAGE_KEYWORDS", t("register_meta_keywords", "register, account, short, url, user"));
+define("HTML_ELEMENT_CLASS", "login-page-wrapper");
+
+// top navigation
+require_once(SITE_TEMPLATES_PATH . '/partial/_navigation_header.inc.php');
+
+// register user
+$title = '';
+if (isset($_REQUEST['submitme']))
+{
+    // validation
+    $title               = trim($_REQUEST['title']);
+    $firstname           = trim($_REQUEST['firstname']);
+    $lastname            = trim($_REQUEST['lastname']);
+    $emailAddress        = trim(strtolower($_REQUEST['emailAddress']));
+    $emailAddressConfirm = trim(strtolower($_REQUEST['emailAddressConfirm']));
+    $username            = trim(strtolower($_REQUEST['username']));
+
+    if (!strlen($title))
+    {
+        notification::setError(t("please_enter_your_title", "Please enter your title"));
+    }
+    elseif (!strlen($firstname))
+    {
+        notification::setError(t("please_enter_your_firstname", "Please enter your firstname"));
+    }
+    elseif (!strlen($lastname))
+    {
+        notification::setError(t("please_enter_your_lastname", "Please enter your lastname"));
+    }
+    elseif (!strlen($emailAddress))
+    {
+        notification::setError(t("please_enter_your_email_address", "Please enter your email address"));
+    }
+    elseif ($emailAddress != $emailAddressConfirm)
+    {
+        notification::setError(t("your_email_address_confirmation_does_not_match", "Your email address confirmation does not match"));
+    }
+    elseif (!validation::validEmail($emailAddress))
+    {
+        notification::setError(t("your_email_address_is_invalid", "Your email address is invalid"));
+    }
+    elseif (!strlen($username))
+    {
+        notification::setError(t("please_enter_your_preferred_username", "Please enter your preferred username"));
+    }
+    elseif ((strlen($username) < 6) || (strlen($username) > 20))
+    {
+        notification::setError(t("username_must_be_between_6_and_20_characters", "Your username must be between 6 and 20 characters"));
+    }
+    elseif (!validation::validUsername($username))
+    {
+        notification::setError(t("your_username_is_invalid", "Your username can only contact alpha numeric and underscores."));
+    }
+    else
+    {
+        $checkEmail = UserPeer::loadUserByEmailAddress($emailAddress);
+        if ($checkEmail)
+        {
+            // username exists
+            notification::setError(t("email_address_already_exists", "Email address already exists on another account"));
+        }
+        else
+        {
+            $checkUser = UserPeer::loadUserByUsername($username);
+            if ($checkUser)
+            {
+                // username exists
+                notification::setError(t("username_already_exists", "Username already exists on another account"));
+            }
+        }
+    }
+
+    // make sure the username is not reserved
+    if (!notification::isErrors())
+    {
+        if (strlen(SITE_CONFIG_RESERVED_USERNAMES))
+        {
+            $reservedUsernames = explode("|", SITE_CONFIG_RESERVED_USERNAMES);
+            if (in_array($username, $reservedUsernames))
+            {
+                // username is reserved
+                notification::setError(t("username_is_reserved", "Username is reserved and can not be used, please choose another"));
+            }
+        }
+    }
+    
+    // make sure the email domain isn't banned
+    if (!notification::isErrors())
+    {
+        if (strlen(SITE_CONFIG_SECURITY_BLOCK_REGISTER_EMAIL_DOMAIN))
+        {
+            $blockedEmailDomains = explode(",", SITE_CONFIG_SECURITY_BLOCK_REGISTER_EMAIL_DOMAIN);
+            $emailDomain = strtolower(end(explode('@', $emailAddress)));
+            if (in_array($emailDomain, $blockedEmailDomains))
+            {
+                // email domain is not allowed
+                notification::setError(t("email_address_not_allowed", "Registration from email addresses on [[[EMAIL_DOMAIN]]] have been blocked on this site.", array('EMAIL_DOMAIN' => $emailDomain)));
+            }
+        }
+    }
+
+    // check captcha
+    if ((!notification::isErrors()) && (SITE_CONFIG_REGISTER_FORM_SHOW_CAPTCHA == 'yes'))
+    {
+        if (!isset($_REQUEST['g-recaptcha-response']))
+        {
+            notification::setError(t("invalid_captcha", "Captcha confirmation text is invalid."));
+        }
+        else
+        {
+            $rs = coreFunctions::captchaCheck($_REQUEST["g-recaptcha-response"]);
+            if (!$rs)
+            {
+                notification::setError(t("invalid_captcha", "Captcha confirmation text is invalid."));
+            }
+        }
+    }
+
+    // create the account
+    if (!notification::isErrors())
+    {
+		$newPassword = passwordPolicy::generatePassword();
+        $newUser     = UserPeer::create($username, $newPassword, $emailAddress, $title, $firstname, $lastname);
+        if ($newUser)
+        {
+            $subject = t('register_user_email_subject', 'Account details for [[[SITE_NAME]]]', array('SITE_NAME' => SITE_CONFIG_SITE_NAME));
+
+            $replacements   = array(
+                'FIRST_NAME' => $firstname,
+                'SITE_NAME'  => SITE_CONFIG_SITE_NAME,
+                'WEB_ROOT'   => WEB_ROOT,
+                'USERNAME'   => $username,
+                'PASSWORD'   => $newPassword
+            );
+            $defaultContent = "Dear [[[FIRST_NAME]]],<br/><br/>";
+            $defaultContent .= "Your account on [[[SITE_NAME]]] has been created. Use the details below to login to your new account:<br/><br/>";
+            $defaultContent .= "<strong>Url:</strong> <a href='[[[WEB_ROOT]]]'>[[[WEB_ROOT]]]</a><br/>";
+            $defaultContent .= "<strong>Username:</strong> [[[USERNAME]]]<br/>";
+            $defaultContent .= "<strong>Password:</strong> [[[PASSWORD]]]<br/><br/>";
+            $defaultContent .= "Feel free to contact us if you need any support with your account.<br/><br/>";
+            $defaultContent .= "Regards,<br/>";
+            $defaultContent .= "[[[SITE_NAME]]] Admin";
+            $htmlMsg        = t('register_user_email_content', $defaultContent, $replacements);
+
+            coreFunctions::sendHtmlEmail($emailAddress, $subject, $htmlMsg, SITE_CONFIG_DEFAULT_EMAIL_ADDRESS_FROM, strip_tags(str_replace("<br/>", "\n", $htmlMsg)));
+
+            // create account welcome notification
+            $content = t('register_account_notification_text', 'Thanks for registering and welcome to your account! Start uploading files straight away by clicking the \'Upload\' button below. Feel free to contact us if you need any help.');
+            $link = WEB_ROOT.'/index.'.SITE_CONFIG_PAGE_EXTENSION;
+            internalNotification::add($newUser->id, $content, $type = 'entypo-thumbs-up', $link);
+			
+			// confirmation page
+			coreFunctions::redirect(WEB_ROOT . "/register_complete." . SITE_CONFIG_PAGE_EXTENSION);
+        }
+        else
+        {
+            notification::setError(t("problem_creating_your_account_try_again_later", "There was a problem creating your account, please try again later"));
+        }
+    }
+}
+
+// header top
+require_once(SITE_TEMPLATES_PATH . '/partial/_header_file_manager_top.inc.php');
+?>
+<body class="page-body login-page login-form-fall register-page">
+    <div class="login-container">
+        <div class="login-header login-caret">
+            <div class="login-content">
+                <a href="<?php echo coreFunctions::getCoreSitePath(); ?>/index.<?php echo SITE_CONFIG_PAGE_EXTENSION; ?>" class="logo">
+                    <img src="<?php echo $themeObj->getMainLogoUrl(); ?>" alt="<?php echo SITE_CONFIG_SITE_NAME; ?>" alt="<?php echo SITE_CONFIG_SITE_NAME; ?>"/>
+                </a>
+            </div>
+        </div>
+        <div class="login-progressbar">
+            <div></div>
+        </div>
+        <div class="login-form">
+            <div class="login-content">
+				<div class="login-main-box">
+					<?php
+					if (notification::isErrors())
+					{
+						echo str_replace("pageErrors", "alert alert-danger", notification::outputErrors());
+					}
+					?>
+					<p class="description"><?php echo t("register_text", "Please enter your information to register for an account. Your new account password will be sent to your email address."); ?></p>
+					<form method="post" role="form" action="register.html" autocomplete="off">
+						<!-- fix for chrome auto complete not working -->
+						<input style="display:none"><input type="password" style="display:none">
+
+						
+						<div class="form-group">
+							<div class="input-group"> <span class="input-group-addon"><i class="fa fa-chevron-right"></i></span>
+								<select class="form-control" autofocus="autofocus" tabindex="1" id="title" name="title">
+									<option disabled selected><?php echo t("title", "title"); ?></option>
+									<option value="Mr" <?php echo ($title == 'Mr') ? 'SELECTED' : ''; ?>><?php echo t('title_mr', 'Mr'); ?></option>
+									<option value="Ms" <?php echo ($title == 'Ms') ? 'SELECTED' : ''; ?>><?php echo t('title_ms', 'Ms'); ?></option>
+									<option value="Mrs" <?php echo ($title == 'Mrs') ? 'SELECTED' : ''; ?>><?php echo t('title_mrs', 'Mrs'); ?></option>
+									<option value="Miss" <?php echo ($title == 'Miss') ? 'SELECTED' : ''; ?>><?php echo t('title_miss', 'Miss'); ?></option>
+									<option value="Dr" <?php echo ($title == 'Dr') ? 'SELECTED' : ''; ?>><?php echo t('title_dr', 'Dr'); ?></option>
+									<option value="Pro" <?php echo ($title == 'Pro') ? 'SELECTED' : ''; ?>><?php echo t('title_pro', 'Pro'); ?></option>
+								</select>
+							</div>
+						</div>
+						
+						<div class="form-group">
+							<div class="input-group"><span class="input-group-addon"><i class="fa fa-chevron-right"></i></span>
+								<input type="text" class="form-control" placeholder="<?php echo t("firstname", "firstname"); ?>" tabindex="1" value="<?php echo isset($firstname) ? validation::safeOutputToScreen($firstname) : ''; ?>" id="firstname" name="firstname">
+							</div>
+						</div>
+						
+						<div class="form-group">
+							<div class="input-group"><span class="input-group-addon"><i class="fa fa-chevron-right"></i></span>
+								<input type="text" class="form-control" placeholder="<?php echo t("lastname", "lastname"); ?>" tabindex="1" value="<?php echo isset($lastname) ? validation::safeOutputToScreen($lastname) : ''; ?>" id="lastname" name="lastname">
+							</div>
+						</div>
+						
+						<div class="form-group">
+							<div class="input-group"><span class="input-group-addon"><i class="fa fa-chevron-right"></i></span>
+								<input type="text" class="form-control" placeholder="<?php echo t("email_address", "email address"); ?>" tabindex="1" value="<?php echo isset($emailAddress) ? validation::safeOutputToScreen($emailAddress) : ''; ?>" id="emailAddress" name="emailAddress">
+							</div>
+						</div>
+						
+						<div class="form-group">
+							<div class="input-group"><span class="input-group-addon"><i class="fa fa-chevron-right"></i></span>
+								<input type="text" class="form-control" placeholder="<?php echo t("email_address_confirm", "Email Confirm"); ?>" tabindex="2" value="<?php echo isset($emailAddressConfirm) ? validation::safeOutputToScreen($emailAddressConfirm) : ''; ?>" id="emailAddressConfirm" name="emailAddressConfirm"></label>
+							</div>
+						</div>
+						
+						<div class="form-group">
+							<div class="input-group"><span class="input-group-addon"><i class="fa fa-chevron-right"></i></span>
+								<input type="text" class="form-control" placeholder="<?php echo t("username", "username"); ?>" tabindex="3" value="<?php echo isset($username) ? validation::safeOutputToScreen($username) : ''; ?>" id="username" name="username" class="uiStyle"></label>
+							</div>
+						</div>
+						
+						<?php if (SITE_CONFIG_REGISTER_FORM_SHOW_CAPTCHA == 'yes'): ?>
+							<div class="form-group" style="margin-left: auto; margin-right: auto; width: 100%; text-align: center;">
+							<?php echo coreFunctions::outputCaptcha(); ?>
+							</div>
+						<?php endif; ?>
+						
+						<div class="form-group">
+							<button type="submit" class="btn btn-info btn-block btn-login">
+								<i class="entypo-right-open-mini"></i>
+								<?php echo UCWords(t("register", "register")); ?>
+							</button>
+						</div>
+						<div class="form-group">&nbsp;</div>
+						<input type="hidden" value="1" name="submitme"/>
+					</form>
+					<div class="login-bottom-links">
+						<a href="<?php echo coreFunctions::getCoreSitePath(); ?>/login.<?php echo SITE_CONFIG_PAGE_EXTENSION; ?>" class="link"><i class="entypo-lock"></i> <?php echo UCWords(t("back_to_login_form", "back to login form")); ?></a>
+					</div>
+				</div>
+			</div>
+			<div class="footer-login-links">
+				<?php echo t("copyright", "copyright"); ?> &copy; <?php echo date("Y"); ?> - <a href="<?php echo coreFunctions::getCoreSitePath(); ?>"><?php echo SITE_CONFIG_SITE_NAME; ?></a>&nbsp;&nbsp;|&nbsp;&nbsp;Powered by <a href="https://mfscripts.com/ucloud/overview.html">uCloud</a>
+			</div>
+        </div>
+    </div>
+    <!-- Bottom Scripts -->
+    <script src="<?php echo SITE_JS_PATH; ?>/gsap/main-gsap.js"></script>
+    <script src="<?php echo SITE_JS_PATH; ?>/bootstrap.js"></script>
+    <script src="<?php echo SITE_JS_PATH; ?>/joinable.js"></script>
+    <script src="<?php echo SITE_JS_PATH; ?>/resizeable.js"></script>
+    <script src="<?php echo SITE_JS_PATH; ?>/cloudable-api.js"></script>
+    <script src="<?php echo SITE_JS_PATH; ?>/jquery.validate.min.js"></script>
+    <script src="<?php echo SITE_JS_PATH; ?>/cloudable-login.js"></script>
+    <script src="<?php echo SITE_JS_PATH; ?>/custom.js"></script>
+</body>
+</html>

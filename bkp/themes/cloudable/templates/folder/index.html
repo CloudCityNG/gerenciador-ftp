@@ -1,0 +1,108 @@
+<?php
+
+// load folder
+$url = _INT_PAGE_URL;
+$urlParts = explode('/', $url);
+array_shift($urlParts);
+$folderId = (int)current($urlParts);
+if($folderId == 0)
+{
+	// no folder id found
+	coreFunctions::redirect(WEB_ROOT);
+}
+
+// load folder
+$folder = fileFolder::loadById($folderId);
+if(!$folder)
+{
+	// no folder found
+	coreFunctions::redirect(WEB_ROOT);
+}
+
+// store 'sharekey' if we have it
+$isValid = false;
+if(isset($_REQUEST['sharekey']))
+{
+	// check if the key is valid
+	$sharekey = trim($_REQUEST['sharekey']);
+	if(strlen($sharekey) == 64)
+	{
+		$isValid = $db->getValue('SELECT id FROM file_folder_share WHERE access_key = '.$db->quote($sharekey).' AND folder_id = '.(int)$folder->id.' LIMIT 1');
+		if($isValid)
+		{
+			$db->query('UPDATE file_folder_share SET last_accessed = NOW() WHERE id = '.(int)$isValid.' LIMIT 1');
+			$_SESSION['sharekey'.$folder->id] = true;
+			$_SESSION['sharekeyOriginalUrl'] = $folder->getFolderUrl().'?sharekey='.$sharekey;
+		}
+	}
+}
+// clear it if we don't have it
+if($isValid == false)
+{
+	$_SESSION['sharekey'.$folder->id] = false;
+	$_SESSION['sharekeyOriginalUrl'] = '';
+	unset($_SESSION['sharekey'.$folder->id]);
+	unset($_SESSION['sharekeyOriginalUrl']);
+}
+
+// load cover details for OG image
+$coverData = fileFolder::getFolderCoverData($folder->id);
+$coverId = (int)$coverData['file_id'];
+$folderCoverLink = null;
+
+// setup page
+define("PAGE_NAME", $folder->folderName.' '.t("folder_page_name", "Folder"));
+define("PAGE_DESCRIPTION", t("folder_view", "View").' '.$folder->folderName.' '.t("folder_folder", "Folder"));
+define("PAGE_KEYWORDS", t("folder_meta_keywords", "folder, images, file, your, interface, upload, download, site"));
+define("SELECTED_NAVIGATION_LINK", "profile");
+
+// page OG info (for facebook)
+define("PAGE_OG_TITLE", $folder->folderName.' '.t("folder_page_name", "Folder"));
+define("PAGE_OG_SITE_NAME", SITE_CONFIG_SITE_NAME);
+define("PAGE_OG_DESCRIPTION", PAGE_DESCRIPTION);
+if($coverId)
+{
+	$file = file::loadById($coverId);
+	if($file)
+	{
+		define("PAGE_OG_TITLE", substr(UCWords(t('View', 'view')).' '.$file->originalFilename.' '.t('on', 'on').' '.SITE_CONFIG_SITE_NAME, 0, 150));
+		define("PAGE_OG_SITE_NAME", SITE_CONFIG_SITE_NAME);
+		
+		// don't show thumbnail if the album is private or has a password
+		if((int)$file->folderId)
+		{
+			// check for password
+			$folderPassword = $folder->accessPassword;
+			
+			// check for privacy
+			$public = true;
+			if(((int)$folder->userId > 0) && ($folder->userId != $Auth->id))
+			{
+				if(coreFunctions::getOverallPublicStatus($folder->userId, $folder->id) == false)
+				{
+					$public = false;
+				}
+			}
+			if(($public == true) && ($folderPassword != true))
+			{
+				define("PAGE_OG_IMAGE", file::getIconPreviewImageUrl((array) $file, false, 64, false, 280, 280, 'middle'));
+			}
+		}
+	}
+}
+
+// include header
+require_once(SITE_TEMPLATES_PATH . '/partial/_header.inc.php');
+
+?>
+
+<script>
+$( document ).ready(function() {
+	loadImages(<?php echo (int)$folder->id; ?>);
+});
+</script>
+
+<?php
+// include footer
+require_once(SITE_TEMPLATES_PATH . '/partial/_footer.inc.php');
+?>

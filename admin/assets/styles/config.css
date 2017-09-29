@@ -1,0 +1,24 @@
+/* You can put your custom font code here here*/
+@import url(fonts.css);
+
+/* Chose background color of Top Header here */
+header, #faux_header {background-color: #2D354D}
+
+/* Chose background color of Navigation here */
+nav, nav li, nav li li, nav li li:hover, #sidebar {background-color: #3B4966}
+
+/* Chose background color of Page Title here */
+#titlediv {background-color: #606060}
+
+/* Chose background pattern of Page Title here */
+#pattern {background-image: url("../images/background/2.png");}
+
+/* Chose background pattern of body, and color, and fonts! here */
+body {background-color: #e5e5e5; background-image: url('../images/background/brushed_alu.png');}
+body, input, select, textarea {font-family: "Lucida Sans", Tahoma, sans-serif; }
+
+/* Chose Font used in headings */
+h1, h2 {font-family: "Open Sans", Arial, sans-serif; font-weight: 600 }
+
+/* The background colors and patterns for the Login page */
+#login {background: url(../images/background/header_blueprint.png) #222222;}

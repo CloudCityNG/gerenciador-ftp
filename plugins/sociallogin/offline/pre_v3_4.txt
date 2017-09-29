@@ -1,0 +1,91 @@
+**************************************************************************
+
+In _header.php find: 
+ 
+</form> 
+
+After add: 
+
+<?php 
+// include any plugin includes 
+pluginHelper::includeAppends('_header_login_box.php'); 
+?> 
+ 
+**************************************************************************
+ 
+In _header.php find: 
+ 
+<a href="<?php echo getCoreSitePath(); ?>/account_edit.<?php echo SITE_CONFIG_PAGE_EXTENSION; ?>"><?php echo t('settings', 'settings'); ?></a> 
+&nbsp;|&nbsp; 
+<a href="<?php echo getCoreSitePath(); ?>/logout.<?php echo SITE_CONFIG_PAGE_EXTENSION; ?>"><?php echo t('logout', 'logout'); ?> (<?php echo $Auth->username; ?>)</a> 
+
+Replace with: 
+
+<?php 
+$links = array(); 
+$links['settings'] = '<a href="'.getCoreSitePath().'/account_edit.'.SITE_CONFIG_PAGE_EXTENSION.'">'.t('settings', 'settings').'</a>'; 
+$links['logout'] = '<a href="'.getCoreSitePath().'/logout.'.SITE_CONFIG_PAGE_EXTENSION.'">'.t('logout', 'logout').' ('.$Auth->username.')</a>'; 
+ 
+// include any plugin includes 
+$links = pluginHelper::includeAppends('_header_nav.php', $links); 
+ 
+// output nav 
+echo implode('&nbsp;&nbsp;|&nbsp;&nbsp;', $links); 
+?>
+
+************************************************************************** 
+ 
+In _footer.php find: 
+ 
+<li><a href="<?php echo getCoreSitePath(); ?>/account_edit.<?php echo SITE_CONFIG_PAGE_EXTENSION; ?>"><?php echo t('settings', 'settings'); ?></a></li> 
+<li><a href="<?php echo getCoreSitePath(); ?>/faq.<?php echo SITE_CONFIG_PAGE_EXTENSION; ?>"><?php echo t('faq', 'faq'); ?></a></li> 
+<li><a href="<?php echo getCoreSitePath(); ?>/logout.<?php echo SITE_CONFIG_PAGE_EXTENSION; ?>"><?php echo t('logout', 'logout'); ?> (<?php echo $Auth->username; ?>)</a></li> 
+
+Replace with: 
+
+<?php 
+$links             = array(); 
+$links['settings'] = '<a href="' . getCoreSitePath() . '/account_edit.' . SITE_CONFIG_PAGE_EXTENSION . '">' . t('settings', 'settings') . '</a>'; 
+$links['faq'] = '<a href="' . getCoreSitePath() . '/faq.' . SITE_CONFIG_PAGE_EXTENSION . '">' . t('faq', 'faq') . '</a>'; 
+$links['logout'] = '<a href="'.getCoreSitePath().'/logout.'.SITE_CONFIG_PAGE_EXTENSION.'">'.t('logout','logout').' (' . $Auth->username . ')</a>'; 
+ 
+// include any plugin includes 
+$links = pluginHelper::includeAppends('_footer_nav.php', $links); 
+ 
+// output nav 
+echo '<li>' . implode('</li><li>', $links) . '</li>'; 
+?>
+
+**************************************************************************
+ 
+In login.php find: 
+ 
+<div class="clear"></div> 
+
+After add: 
+
+<?php 
+// include any plugin includes 
+pluginHelper::includeAppends('login_login_box.php'); 
+?> 
+ 
+**************************************************************************
+
+In includes/functions.inc.php find: 
+ 
+function __autoload($class_name) 
+{ 
+    require DOC_ROOT . '/includes/class.' . strtolower($class_name) . '.php'; 
+} 
+
+Replace with: 
+
+function __autoload($class_name) 
+{ 
+    if(file_exists(DOC_ROOT . '/includes/class.' . strtolower($class_name) . '.php')) 
+    { 
+        require_once(DOC_ROOT . '/includes/class.' . strtolower($class_name) . '.php'); 
+    } 
+} 
+ 
+**************************************************************************

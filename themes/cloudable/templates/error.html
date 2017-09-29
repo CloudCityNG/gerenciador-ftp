@@ -1,0 +1,28 @@
+<?php
+/* setup page */
+define("PAGE_NAME", t("error_page_name", "Error"));
+define("PAGE_DESCRIPTION", t("error_meta_description", "Error"));
+define("PAGE_KEYWORDS", t("error_meta_keywords", "error, image, picture, pic, img, hosting, sharing, upload, storage, site, website"));
+define("TITLE_DESCRIPTION_LEFT", t("error_title_page_description_left", "Something messed up!"));
+
+if (!$e = $_REQUEST['e'])
+{
+    $e = t("general_site_error", "There has been an error, please try again later.");
+}
+$e = strip_tags($e);
+
+// include header
+require_once(SITE_TEMPLATES_PATH . '/partial/_header.inc.php');
+?>
+
+<script>
+$(document).ready(function () {
+	showErrorNotification("<?php echo t('error', 'Error'); ?>", "<?php echo str_replace("\"", "'", $e); ?>");
+});
+</script>
+<div class="ajax-error-image"><!-- --></div>
+
+<?php
+// include footer
+require_once(SITE_TEMPLATES_PATH . '/partial/_footer.inc.php');
+?>

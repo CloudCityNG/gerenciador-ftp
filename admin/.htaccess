@@ -1,0 +1,5 @@
+# disable mod security for admin area
+<IfModule mod_security.c>
+SecFilterEngine Off
+SecFilterScanPOST Off
+</IfModule>

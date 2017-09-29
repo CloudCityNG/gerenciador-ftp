@@ -1,0 +1,754 @@
+<?php
+
+// require login
+$Auth->requireUser(WEB_ROOT.'/login.'.SITE_CONFIG_PAGE_EXTENSION);
+
+// load user
+$user = UserPeer::loadUserById($Auth->id);
+if (!$user)
+{
+    coreFunctions::redirect(WEB_ROOT);
+}
+
+// setup page
+define("PAGE_NAME", t("account_edit_page_name", "Account Details"));
+define("PAGE_DESCRIPTION", t("account_edit_meta_description", "Account details"));
+define("PAGE_KEYWORDS", t("account_edit_meta_keywords", "details, account, short, url, user"));
+define("SELECTED_NAVIGATION_LINK", "settings");
+
+// dropdowns
+$watermarkPositionOptions                  = array();
+$watermarkPositionOptions['top left']      = 'Top-Left';
+$watermarkPositionOptions['top']   		   = 'Top-Middle';
+$watermarkPositionOptions['top right']     = 'Top-Right';
+$watermarkPositionOptions['right']         = 'Right';
+$watermarkPositionOptions['bottom right']  = 'Bottom-Right';
+$watermarkPositionOptions['bottom'] 	   = 'Bottom-Middle';
+$watermarkPositionOptions['bottom left']   = 'Bottom-Left';
+$watermarkPositionOptions['left']          = 'Left';
+$watermarkPositionOptions['center']        = 'Middle';
+
+// get account stats
+$totalFreeSpace = UserPeer::getAvailableFileStorage($Auth->id);
+$totalActiveFiles = file::getTotalActiveFilesByUser($Auth->id);
+$totalDownloads = file::getTotalDownloadsByUserOwnedFiles($Auth->id);
+
+// update user
+if (isset($_REQUEST['submitme']) && (int)$_REQUEST['submitme'])
+{
+    // validation
+    $title = trim($_REQUEST['title']);
+    $firstname = trim($_REQUEST['firstname']);
+    $lastname = trim($_REQUEST['lastname']);
+    $emailAddress = trim(strtolower($_REQUEST['emailAddress']));
+    $password = trim($_REQUEST['password']);
+    $passwordConfirm = trim($_REQUEST['passwordConfirm']);
+    $languageId = null;
+    if(isset($_REQUEST['languageId']))
+    {
+        $languageId = (int)$_REQUEST['languageId'];
+    }
+    $privateFileStatistics = (int)$_REQUEST['privateFileStatistics'];
+	$isPublic		= (int)$_REQUEST['isPublic'];
+	$uploadedAvatar = null;
+	if((isset($_FILES['avatar']['tmp_name'])) && (strlen($_FILES['avatar']['tmp_name'])))
+	{
+		$uploadedAvatar = $_FILES['avatar'];
+	}
+	$uploadedWatermark = null;
+	if((isset($_FILES['watermark']['tmp_name'])) && (strlen($_FILES['watermark']['tmp_name'])))
+	{
+		$uploadedWatermark = $_FILES['watermark'];
+	}
+	
+	$removeAvatar = false;
+	if((isset($_REQUEST['removeAvatar'])) && ((int)$_REQUEST['removeAvatar'] == 1))
+	{
+		$removeAvatar = true;
+	}
+	$removeWatermark = false;
+	if((isset($_REQUEST['removeWatermark'])) && ((int)$_REQUEST['removeWatermark'] == 1))
+	{
+		$removeWatermark = true;
+	}
+	$watermarkPosition = trim($_REQUEST['watermarkPosition']);
+	$watermarkPadding = (int)$_REQUEST['watermarkPadding'];
+	
+    if (!strlen($title))
+    {
+        notification::setError(t("please_enter_your_title", "Please enter your title"));
+    }
+    elseif (!strlen($firstname))
+    {
+        notification::setError(t("please_enter_your_firstname", "Please enter your firstname"));
+    }
+    elseif (!strlen($lastname))
+    {
+        notification::setError(t("please_enter_your_lastname", "Please enter your lastname"));
+    }
+    elseif (!strlen($emailAddress))
+    {
+        notification::setError(t("please_enter_your_email_address", "Please enter your email address"));
+    }
+    elseif (!validation::validEmail($emailAddress))
+    {
+        notification::setError(t("your_email_address_is_invalid", "Your email address is invalid"));
+    }
+    elseif(coreFunctions::inDemoMode() == true)
+    {
+        notification::setError(t("no_changes_in_demo_mode"));
+    }
+    else
+    {
+        $checkEmail = UserPeer::loadUserByEmailAddress($emailAddress);
+        if (($checkEmail) && ($checkEmail->id != $Auth->id))
+        {
+            // username exists
+            notification::setError(t("email_address_already_exists", "Email address already exists on another account"));
+        }
+        else
+        {
+            // check password if one set
+            if(strlen($password))
+            {
+                if($password != $passwordConfirm)
+                {
+                    notification::setError(t("your_password_confirmation_does_not_match", "Your password confirmation does not match"));
+                }
+                else
+                {
+                    $passValid = passwordPolicy::validatePassword($password);
+                    if(is_array($passValid))
+                    {
+                        notification::setError(implode('<br/>', $passValid));
+                    }
+                }
+            }
+        }
+    }
+	
+	if (!notification::isErrors())
+    {
+		if($uploadedAvatar)
+		{
+			// check filesize
+			$maxAvatarSize = 1024*1024*5;
+			if($uploadedAvatar['size'] > ($maxAvatarSize))
+			{
+				notification::setError(t("account_edit_avatar_is_too_large", "The uploaded image can not be more than [[[MAX_SIZE_FORMATTED]]]", array('MAX_SIZE_FORMATTED'=>coreFunctions::formatSize($maxAvatarSize))));
+			}
+			else
+			{
+				// make sure it's an image
+				$imagesizedata = @getimagesize($uploadedAvatar['tmp_name']);
+				if ($imagesizedata === FALSE)
+				{
+					//not image
+					notification::setError(t("account_edit_avatar_is_not_an_image", "Your avatar must be a jpg, png or gif image."));
+				}
+			}
+		}
+	}
+
+	if (!notification::isErrors())
+    {
+		if($uploadedWatermark)
+		{
+			// check filesize
+			$maxWatermarkSize = 1024*1024*5;
+			if($uploadedWatermark['size'] > ($maxWatermarkSize))
+			{
+				notification::setError(t("account_edit_watermark_is_too_large", "The uploaded watermark can not be more than [[[MAX_SIZE_FORMATTED]]]", array('MAX_SIZE_FORMATTED'=>coreFunctions::formatSize($maxWatermarkSize))));
+			}
+			else
+			{
+				// make sure it's a png image
+				$imgInfo = getimagesize($uploadedWatermark['tmp_name']);
+				if($imgInfo[2] != IMAGETYPE_PNG)
+				{
+					// not image
+					notification::setError(t("account_edit_watermark_is_not_a_png", "Your watermark must be a png image."));
+				}
+			}
+		}
+	}
+
+    // update the account
+    if (!notification::isErrors())
+    {
+        // if password changed send confirmation notice to user
+        if(SITE_CONFIG_SECURITY_SEND_USER_EMAIL_ON_PASSWORD_CHANGE == 'yes')
+        {
+            if(strlen($password))
+            {
+                $subject = t('password_change_email_subject', 'Password changed for account on [[[SITE_NAME]]]', array('SITE_NAME' => SITE_CONFIG_SITE_NAME));
+
+                $replacements = array(
+                    'FIRST_NAME' => $Auth->user->firstname,
+                    'SITE_NAME' => SITE_CONFIG_SITE_NAME,
+                    'WEB_ROOT' => WEB_ROOT,
+                    'USERNAME' => $Auth->username,
+                );
+                $defaultContent = "Dear [[[FIRST_NAME]]],<br/><br/>";
+                $defaultContent .= "This is a courtesy email notifying you that your account password on [[[SITE_NAME]]] has been changed.<br/><br/>";
+                $defaultContent .= "If you didn't change your password, please contact us immediately. Otherwise just ignore this email.<br/><br/>";
+                $defaultContent .= "<strong>Url:</strong> <a href='[[[WEB_ROOT]]]'>[[[WEB_ROOT]]]</a><br/>";
+                $defaultContent .= "<strong>Username:</strong> [[[USERNAME]]]<br/><br/>";
+                $defaultContent .= "Feel free to contact us if you need any support with your account.<br/><br/>";
+                $defaultContent .= "Regards,<br/>";
+                $defaultContent .= "[[[SITE_NAME]]] Admin";
+                $htmlMsg = t('password_change_email_content', $defaultContent, $replacements);
+
+                coreFunctions::sendHtmlEmail($Auth->email, $subject, $htmlMsg, SITE_CONFIG_DEFAULT_EMAIL_ADDRESS_FROM, strip_tags(str_replace("<br/>", "\n", $htmlMsg)));
+            }
+        }
+        
+        // if email changed send confirmation notice to user
+        if(SITE_CONFIG_SECURITY_SEND_USER_EMAIL_ON_EMAIL_CHANGE == 'yes')
+        {
+            if($emailAddress != $Auth->email)
+            {
+                $subject = t('email_change_email_subject', 'Email changed for account on [[[SITE_NAME]]]', array('SITE_NAME' => SITE_CONFIG_SITE_NAME));
+
+                $replacements = array(
+                    'FIRST_NAME' => $Auth->user->firstname,
+                    'SITE_NAME' => SITE_CONFIG_SITE_NAME,
+                    'WEB_ROOT' => WEB_ROOT,
+                    'USERNAME' => $Auth->username,
+                    'NEW_EMAIL' => $emailAddress,
+                );
+                $defaultContent = "Dear [[[FIRST_NAME]]],<br/><br/>";
+                $defaultContent .= "This is a courtesy email notifying you that your account email address on [[[SITE_NAME]]] has been changed to [[[NEW_EMAIL]]].<br/><br/>";
+                $defaultContent .= "If you didn't change your email address, please contact us immediately. Otherwise just ignore this email.<br/><br/>";
+                $defaultContent .= "<strong>Url:</strong> <a href='[[[WEB_ROOT]]]'>[[[WEB_ROOT]]]</a><br/>";
+                $defaultContent .= "<strong>Username:</strong> [[[USERNAME]]]<br/>";
+                $defaultContent .= "<strong>New Email:</strong> [[[NEW_EMAIL]]]<br/><br/>";
+                $defaultContent .= "Feel free to contact us if you need any support with your account.<br/><br/>";
+                $defaultContent .= "Regards,<br/>";
+                $defaultContent .= "[[[SITE_NAME]]] Admin";
+                $htmlMsg = t('email_change_email_content', $defaultContent, $replacements);
+
+                coreFunctions::sendHtmlEmail($Auth->email, $subject, $htmlMsg, SITE_CONFIG_DEFAULT_EMAIL_ADDRESS_FROM, strip_tags(str_replace("<br/>", "\n", $htmlMsg)));
+            }
+        }
+        
+        $db = Database::getDatabase(true);
+        $rs = $db->query('UPDATE users SET title = :title, firstname = :firstname, lastname = :lastname, email = :email, languageId = :languageId, privateFileStatistics = :privateFileStatistics, isPublic = :isPublic WHERE id = :id', array('title' => $title, 'firstname' => $firstname, 'lastname' => $lastname, 'email' => $emailAddress, 'id' => $Auth->id, 'languageId' => $languageId, 'privateFileStatistics' => $privateFileStatistics, 'isPublic' => $isPublic));
+        if ($rs)
+        {
+            // do password
+            if(strlen($password))
+            {
+                $rs = $db->query('UPDATE users SET password = :password WHERE id = :id', array('password' => Password::createHash($password), 'id' => $Auth->id));
+            }
+            
+            // reset site language if updated
+            if($languageId != null)
+            {
+                $languageName = $db->getValue("SELECT languageName FROM language WHERE isActive = 1 AND id = " . (int)$languageId . " LIMIT 1");
+                if($languageName)
+                {
+                    $_SESSION['_t'] = $languageName;
+                }
+            }
+			
+			// save avatar
+			$src = null;
+			if($uploadedAvatar)
+			{
+				// convert all images to jpg
+				$imgInfo = getimagesize($uploadedAvatar['tmp_name']);
+				switch ($imgInfo[2])
+				{
+					case IMAGETYPE_GIF: $src = imagecreatefromgif($uploadedAvatar['tmp_name']);  break;
+					case IMAGETYPE_JPEG: $src = imagecreatefromjpeg($uploadedAvatar['tmp_name']); break;
+					case IMAGETYPE_PNG: $src = imagecreatefrompng($uploadedAvatar['tmp_name']);  break;
+					default: $src = null;
+				}
+			}
+
+			// if we've loaded the image store it as jpg
+			if(($src) || ($removeAvatar == true))
+			{
+				ob_start();
+				imagejpeg($src, null, 100);
+				$imageData = ob_get_contents();
+				ob_end_clean();
+				$avatarCachePath = 'user/'.(int)$Auth->id.'/profile';
+				
+				// delete any existing avatar files including generate cache
+				if(file_exists(CACHE_DIRECTORY_ROOT.'/'.$avatarCachePath))
+				{
+					$files = coreFunctions::getDirectoryListing(CACHE_DIRECTORY_ROOT.'/'.$avatarCachePath);
+					if(COUNT($files))
+					{
+						foreach($files AS $file)
+						{
+							@unlink($file);
+						}
+					}
+				}
+				
+				if($src)
+				{
+					// save new file
+					cache::saveCacheToFile($avatarCachePath.'/avatar_original.jpg', $imageData);
+				}
+			}
+			
+			// track whether to clear any image cache or now
+			$clearImageCache = false;
+			
+			// save watermark image
+			if(($uploadedWatermark) || ($removeWatermark == true))
+			{
+				$imageData = file_get_contents($uploadedWatermark['tmp_name']);
+				$watermarkCachePath = 'user/'.(int)$Auth->id.'/watermark';
+				
+				// delete any existing avatar files including generate cache
+				if(file_exists(CACHE_DIRECTORY_ROOT.'/'.$watermarkCachePath))
+				{
+					$files = coreFunctions::getDirectoryListing(CACHE_DIRECTORY_ROOT.'/'.$watermarkCachePath);
+					if(COUNT($files))
+					{
+						foreach($files AS $file)
+						{
+							@unlink($file);
+						}
+					}
+				}
+				
+				if($uploadedWatermark)
+				{
+					// save new file
+					cache::saveCacheToFile($watermarkCachePath.'/watermark_original.png', $imageData);
+				}
+				
+				// clear image cache
+				$clearImageCache = true;
+			}
+			
+			// if there's any changes to the watermarking, clear the cache
+			if(($watermarkPosition != $user->getProfileValue('watermarkPosition')) || ($watermarkPadding != $user->getProfileValue('watermarkPadding')))
+			{
+				// clear image cache
+				$clearImageCache = true;
+			}
+			
+			// setup for profile data
+			$profile = array();
+			$profile['watermarkPosition'] = $watermarkPosition;
+			$profile['watermarkPadding'] = $watermarkPadding;
+
+			// update any profile information, this is used for fields which may not be part of the core script, so theme specific
+			$Auth->user->storeProfileData($profile);
+			
+			// clear any image cache if we need to
+			if($clearImageCache == true)
+			{
+				$folders = $db->getRows('SELECT id FROM file_folder WHERE userId = ' . (int)$Auth->id);
+				if($folders)
+				{
+					$pluginObj = pluginHelper::getInstance('filepreviewer');
+					foreach($folders AS $folder)
+					{
+						$files = file::loadAllActiveByFolderId((int)$folder['id']);
+						if($files)
+						{
+							foreach($files AS $file)
+							{
+								$pluginObj->deleteImagePreviewCache($file['id']);
+							}
+						}
+					}
+				}
+			}
+            
+			// message
+            notification::setSuccess(t("account_updated_success_message", "Account details successfully updated"));
+        }
+        else
+        {
+            notification::setError(t("problem_creating_your_account_try_again_later", "There was a problem creating your account, please try again later"));
+        }
+    }
+}
+else
+{
+    $title = $user->title;
+    $firstname = $user->firstname;
+    $lastname = $user->lastname;
+    $emailAddress = $user->email;
+    $languageId = $user->languageId;
+	$isPublic = (int)$user->isPublic;
+    if($languageId == null)
+    {
+        $languageId = $db->getValue("SELECT id FROM language WHERE isActive = 1 AND languageName = '" . $db->escape(trim($_REQUEST['_t'])) . "' LIMIT 1");
+    }
+    $privateFileStatistics = $user->privateFileStatistics;
+
+	// load any profile info
+	$watermarkPosition = $user->getProfileValue('watermarkPosition')?$user->getProfileValue('watermarkPosition'):'bottom-right';
+	$watermarkPadding = (int)$user->getProfileValue('watermarkPadding')?$user->getProfileValue('watermarkPadding'):10;
+}
+
+// check for existing avatar
+$hasAvatar = false;
+$avatarCachePath = 'user/'.(int)$Auth->id.'/profile/avatar_original.jpg';
+if(cache::checkCacheFileExists($avatarCachePath))
+{
+	$hasAvatar = true;
+}
+
+// check for existing profile image
+$hasWatermark = false;
+$watermarkCachePath = 'user/'.(int)$Auth->id.'/watermark/watermark_original.png';
+$watermarkCacheUrl = CACHE_WEB_ROOT.'/'.$watermarkCachePath;
+if(cache::checkCacheFileExists($watermarkCachePath))
+{
+	$hasWatermark = true;
+}
+
+// include header
+require_once(SITE_TEMPLATES_PATH . '/partial/_header.inc.php');
+
+// file manager javascript
+require_once(SITE_TEMPLATES_PATH . '/partial/_account_home_javascript.inc.php');
+
+if (notification::isSuccess())
+{
+    echo templateFunctions::outputSuccess();
+}
+elseif (notification::isErrors())
+{
+    echo templateFunctions::outputErrors();
+}
+?>
+
+<div class="main-content layer base-slide">
+    <ol class="breadcrumb bc-3">
+        <li>
+            <a href="<?php echo WEB_ROOT; ?>/index.<?php echo SITE_CONFIG_PAGE_EXTENSION; ?>"><i class="entypo-home"></i>Home</a>
+        </li>
+        <li class="active">
+            <strong><?php echo t("account_details", "Account Details"); ?></strong>
+        </li>
+    </ol>
+    
+    <div class="row">
+        <div class="col-sm-3 responsive-column">
+
+            <div class="tile-stats tile-red">
+                <div class="icon"><i class="entypo-drive"></i></div>
+                <?php if($totalFreeSpace !== NULL): ?>
+                    <div data-delay="0" data-duration="1500" data-decimals="2" data-postfix="&nbsp;<?php echo validation::safeOutputToScreen(coreFunctions::formatSize($totalFreeSpace, 'ext', false)); ?>" data-end="<?php echo validation::safeOutputToScreen(coreFunctions::formatSize($totalFreeSpace, 'size', false)); ?>" data-start="0" class="num">-</div>
+                <?php else: ?>
+                    <div class="num"><?php echo t("unlimited", "Unlimited"); ?></div>
+                <?php endif; ?>
+                <h3><?php echo t("available_storage", "Available Storage"); ?></h3>
+            </div>
+
+        </div>
+
+        <div class="col-sm-3 responsive-column">
+
+            <div class="tile-stats tile-green">
+                <div class="icon"><i class="entypo-upload"></i></div>
+                <div data-delay="0" data-duration="1500" data-decimals="2" data-postfix="&nbsp;<?php echo validation::safeOutputToScreen(coreFunctions::formatSize($totalActiveFileSize, 'ext')); ?>" data-end="<?php echo validation::safeOutputToScreen(coreFunctions::formatSize($totalActiveFileSize, 'size')); ?>" data-start="0" class="num">-</div>
+                <h3><?php echo t("used_storage", "Used Storage"); ?></h3>
+            </div>
+
+        </div>
+
+        <div class="col-sm-3 responsive-column">
+
+            <div class="tile-stats tile-aqua">
+                <div class="icon"><i class="entypo-doc-text-inv"></i></div>
+                <div data-delay="0" data-duration="1500" data-end="<?php echo validation::safeOutputToScreen($totalActiveFiles); ?>" data-start="0" class="num">-</div>
+                <h3><?php echo t("active_files", "Active Files"); ?></h3>
+            </div>
+
+        </div>
+
+        <div class="col-sm-3 responsive-column">
+
+            <div class="tile-stats tile-blue">
+                <div class="icon"><i class="entypo-down"></i></div>
+                <div data-delay="0" data-duration="1500" data-end="<?php echo validation::safeOutputToScreen($totalDownloads); ?>" data-start="0" class="num">-</div>
+                <h3><?php echo t("total_downloads", "Total Downloads"); ?></h3>
+            </div>
+
+        </div>
+    </div>
+    <br/>
+    
+	<form class="form-horizontal form-groups-bordered" role="form" action="<?php echo WEB_ROOT; ?>/account_edit.<?php echo SITE_CONFIG_PAGE_EXTENSION; ?>" method="POST" enctype="multipart/form-data">
+    <div class="row">
+        <div class="col-md-12">
+
+            <div data-collapsed="0" class="panel panel-primary">
+
+                <div class="panel-heading">
+                    <div class="panel-title">
+                        <?php echo t('keep_your_account_details_up_to_date_below', 'Keep your account details up to date below.'); ?>
+                    </div>
+                </div>
+
+                <div class="panel-body">
+					<div class="form-group">
+						<label class="col-sm-3 control-label" for="title"><?php echo t("title", "Title"); ?></label>
+						<div class="col-sm-5">
+							<select id="title" name="title" class="form-control" autofocus="autofocus" tabindex="1" data-content="<?php echo validation::safeOutputToScreen(t('your_title', 'Your title')); ?>" data-placement="right" data-trigger="hover focus" data-container="body" data-toggle="popover">
+								<option value="Mr" <?php echo ($title == 'Mr')?'SELECTED':''; ?>><?php echo t('title_mr', 'Mr'); ?></option>
+                                <option value="Ms" <?php echo ($title == 'Ms') ? 'SELECTED' : ''; ?>><?php echo t('title_ms', 'Ms'); ?></option>
+								<option value="Mrs" <?php echo ($title == 'Mrs')?'SELECTED':''; ?>><?php echo t('title_mrs', 'Mrs'); ?></option>
+								<option value="Miss" <?php echo ($title == 'Miss')?'SELECTED':''; ?>><?php echo t('title_miss', 'Miss'); ?></option>
+								<option value="Dr" <?php echo ($title == 'Dr')?'SELECTED':''; ?>><?php echo t('title_dr', 'Dr'); ?></option>
+								<option value="Pro" <?php echo ($title == 'Pro')?'SELECTED':''; ?>><?php echo t('title_pro', 'Pro'); ?></option>
+							</select>
+						</div>
+					</div>
+					
+					<div class="form-group">
+						<label class="col-sm-3 control-label" for="firstname"><?php echo t("firstname", "Firstname"); ?></label>
+						<div class="col-sm-5">
+							<input id="firstname" name="firstname" type="text" tabindex="2" value="<?php echo isset($firstname) ? validation::safeOutputToScreen($firstname) : ''; ?>" class="form-control" data-content="<?php echo validation::safeOutputToScreen(t('your_firstname', 'Your firstname')); ?>" data-placement="right" data-trigger="hover focus" data-container="body" data-toggle="popover">
+						</div>
+					</div>
+					
+					<div class="form-group">
+						<label class="col-sm-3 control-label" for="lastname"><?php echo t("lastname", "Lastname"); ?></label>
+						<div class="col-sm-5">
+							<input id="lastname" name="lastname" type="text" tabindex="3" value="<?php echo isset($lastname) ? validation::safeOutputToScreen($lastname) : ''; ?>" class="form-control" data-content="<?php echo validation::safeOutputToScreen(t('your_lastname', 'Your lastname')); ?>" data-placement="right" data-trigger="hover focus" data-container="body" data-toggle="popover">
+						</div>
+					</div>
+					
+					<div class="form-group">
+						<label class="col-sm-3 control-label" for="emailAddress"><?php echo t("email_address", "Email Address"); ?></label>
+						<div class="col-sm-5">
+							<input id="emailAddress" name="emailAddress" type="text" tabindex="4" value="<?php echo isset($emailAddress) ? validation::safeOutputToScreen($emailAddress) : ''; ?>" class="form-control" data-content="<?php echo validation::safeOutputToScreen(t('your_new_email_address', 'Your new email address')); ?>" data-placement="right" data-trigger="hover focus" data-container="body" data-toggle="popover">
+						</div>
+					</div>
+					
+					<?php
+					// language selector
+					if(SITE_CONFIG_LANGUAGE_USER_SELECT_LANGUAGE == 'yes')
+					{
+						$activeLanguages = $db->getRows("SELECT id, languageName FROM language WHERE isActive = 1 ORDER BY languageName ASC");
+						if (COUNT($activeLanguages))
+						{
+							?>
+							<div class="form-group">
+								<label class="col-sm-3 control-label" for="languageId"><?php echo t("language", "Language"); ?></label>
+								<div class="col-sm-5">
+									<select id="languageId" name="languageId" class="form-control" tabindex="7" data-content="<?php echo validation::safeOutputToScreen(t('settings_tip_site_language', 'The language to use on the site.')); ?>" data-placement="right" data-trigger="hover focus" data-container="body" data-toggle="popover">
+										<?php
+											foreach ($activeLanguages AS $activeLanguage)
+											{
+												echo '<option value="'.$activeLanguage['id'].'"';
+												if($languageId == $activeLanguage['id'])
+												{
+													echo ' SELECTED';
+												}
+												echo '>'.  validation::safeOutputToScreen($activeLanguage['languageName']).'</option>';
+											}
+										?>
+									</select>
+								</div>
+							</div>
+							<?php
+						}
+					}
+					?>
+                </div>
+            </div>
+			
+			
+            <div data-collapsed="0" class="panel panel-primary">
+                <div class="panel-heading">
+                    <div class="panel-title">
+                        <?php echo ucwords(t("privacy", "Privacy")); ?>.
+                    </div>
+                </div>
+				
+				<div class="panel-body">
+					<?php if(SITE_CONFIG_FORCE_FILES_PRIVATE == 'no'): ?>
+						<div class="form-group">
+							<label class="col-sm-3 control-label" for="isPublic"><?php echo ucwords(t("default_folder_privacy", "Default Folder Privacy")); ?></label>
+							<div class="col-sm-5">
+								<select id="isPublic" name="isPublic" class="form-control" autofocus="autofocus" tabindex="8" data-content="<?php echo validation::safeOutputToScreen(t('settings_tip_private_files_text', 'Whether to keep all files private or allow sharing. If this is set as public, you can still set folders as private.')); ?>" data-placement="right" data-trigger="hover focus" data-container="body" data-toggle="popover">  
+									<option value="1" <?php echo($isPublic == 1)?' selected="selected"':''; ?>><?php echo t('privacy_public_limited_access', 'Public - Access if users know the folder url.'); ?></option>
+									<option value="0" <?php echo($isPublic == 0)?' selected="selected"':''; ?>><?php echo t('privacy_private_no_access', 'Private - No access outside of your account, unless you generate a unique access url.'); ?></option>
+								</select>
+							</div>
+						</div>
+					<?php endif; ?>
+				</div>
+				
+            </div>
+            
+			
+        </div>
+    </div>
+	
+	
+	<br/>
+	
+	<div class="row">
+        <div class="col-md-12">
+            <div data-collapsed="0" class="panel panel-primary">
+                <div class="panel-heading">
+                    <div class="panel-title">
+                        <?php echo t('account_settings_change_password', 'Change password.'); ?>
+                    </div>
+                </div>
+
+                <div class="panel-body">
+					<div class="form-group">
+						<label class="col-sm-3 control-label" for="password"><?php echo t("change_password", "Change Password"); ?></label>
+						<div class="col-sm-5">
+							<input id="password" name="password" type="password" tabindex="5" value="" class="form-control" data-content="<?php echo validation::safeOutputToScreen(t('a_new_account_password_leave_blank_to_keep', 'Optional. A new account password, leave this blank to keep your existing.')); ?>" data-placement="right" data-trigger="hover focus" data-container="body" data-toggle="popover">
+						</div>
+					</div>
+					
+					<div class="form-group">
+						<label class="col-sm-3 control-label" for="passwordConfirm"><?php echo t("confirm_password_edit", "Confirm Password"); ?></label>
+						<div class="col-sm-5">
+							<input id="passwordConfirm" name="passwordConfirm" type="password" tabindex="6" value="" class="form-control" data-content="<?php echo validation::safeOutputToScreen(t('a_new_account_password_confirm_leave_blank_to_keep', 'Optional. Confirm the password entered above, leave this blank to keep your existing.')); ?>" data-placement="right" data-trigger="hover focus" data-container="body" data-toggle="popover">
+						</div>
+					</div>
+                </div>
+            </div>
+        </div>
+    </div>
+	
+	<?php
+	// do plugin includes, i.e. override avatar with social login one
+	$params = pluginHelper::includeAppends('account_avatar.php', array('photoURL' => null));
+	if(strlen($params['photoURL']) == 0)
+	{
+	?>
+	<br/>
+	<div class="row">
+        <div class="col-md-12">
+
+            <div data-collapsed="0" class="panel panel-primary">
+
+                <div class="panel-heading">
+                    <div class="panel-title">
+                        <?php echo t('account_settings_avatar', 'Account avatar.'); ?>
+                    </div>
+                </div>
+
+                <div class="panel-body">
+
+					<div class="form-group">
+						<label for="avatar" class="col-sm-3 control-label"><?php echo t('account_settings_avatar_file', 'Select File (jpg, png or gif)'); ?></label>
+						<div class="col-sm-5">
+							<input type="file" class="form-control" id="avatar" name="avatar" placeholder="<?php echo t('account_settings_avatar_file', 'Select File (jpg, png or gif)'); ?>">
+							<?php if($hasAvatar == true): ?>
+							<br/>
+							<img class="img-square settings-avatar" src="<?php echo CORE_PAGE_WEB_ROOT; ?>/account_view_avatar.php?width=44&amp;height=44">
+							<div class="checkbox" style="float: left;">
+								<label>
+									<input type="checkbox" id="removeAvatar" name="removeAvatar" value="1"/><?php echo t('account_settings_avatar_remove', 'Remove avatar'); ?>
+								</label>
+							</div>
+							<?php endif; ?>
+						</div>
+					</div>
+                </div>
+            </div>
+        </div>
+    </div>
+	<?php
+	}
+	?>
+	
+	<br/>
+	<div class="row">
+        <div class="col-md-12">
+
+            <div data-collapsed="0" class="panel panel-primary">
+
+                <div class="panel-heading">
+                    <div class="panel-title">
+                        <?php echo t('account_settings_watermark', 'Optional image preview watermark. After upload, enable watermarking using each folder settings.'); ?>
+                    </div>
+                </div>
+
+                <div class="panel-body">
+
+					<div class="form-group">
+						<label for="watermark" class="col-sm-3 control-label"><?php echo t('account_settings_watermark_file', 'Select File (transparent png)'); ?></label>
+						<div class="col-sm-5">
+							<input type="file" class="form-control" id="watermark" name="watermark" placeholder="<?php echo t('account_settings_watermark_file', 'Select File (transparent png)'); ?>">
+							<?php if($hasWatermark == true): ?>
+							<br/>
+							<div class="checkbox" style="float: left;">
+								<label>
+									<input type="checkbox" id="removeWatermark" name="removeWatermark" value="1"/><?php echo t('account_settings_watermark_remove', 'Remove watermark'); ?>
+								</label>
+							</div>
+							<div class="clear"></div>
+							<br/>
+							<img src="<?php echo $watermarkCacheUrl; ?>">
+							<?php endif; ?>
+						</div>
+					</div>
+					<div class="form-group">
+						<label class="col-sm-3 control-label" for="watermarkPosition"><?php echo t("account_settings_watermark_position", "Watermark Position"); ?></label>
+						<div class="col-sm-5">
+							<select name="watermarkPosition" id="watermarkPosition" class="form-control">
+								<?php
+								foreach ($watermarkPositionOptions AS $k => $enabledOption)
+								{
+									echo '<option value="' . $k . '"';
+									if ($watermarkPosition == $k)
+									{
+										echo ' SELECTED';
+									}
+									echo '>' . $enabledOption . '</option>';
+								}
+								?>
+							</select>
+						</div>
+					</div>
+					<div class="form-group">
+						<label class="col-sm-3 control-label" for="watermarkPadding"><?php echo t("account_settings_watermark_padding", "Watermark Padding"); ?></label>
+						<div class="col-sm-5">
+							<div class="input-spinner"> <button type="button" class="btn btn-default">-</button> <input id="watermarkPadding" name="watermarkPadding" type="text" class="form-control size-1" value="<?php echo isset($watermarkPadding) ? validation::safeOutputToScreen($watermarkPadding) : '10'; ?>" data-min="0" data-max="50"> <button type="button" class="btn btn-default">+</button> </div>
+						</div>
+					</div>
+                </div>
+            </div>
+        </div>
+    </div>
+	
+	<br/>
+	<div class="row">
+        <div class="col-md-12">
+
+            <div data-collapsed="0" class="panel panel-primary">
+
+                <div class="panel-body">
+
+					<div class="form-group">
+						<div class="col-sm-offset-3 col-sm-5">
+							<input type="hidden" value="1" name="submitme"/>
+							<input type="hidden" name="privateFileStatistics" value="1"/>
+							<button class="btn btn-info" type="submit"><?php echo UCWords(t("update_account", "update account")); ?> <i class="entypo-check"></i></button>
+						</div>
+					</div>
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+	</form>
+</div>
+
+<?php
+// include footer
+require_once(SITE_TEMPLATES_PATH . '/partial/_footer.inc.php');
+?>
